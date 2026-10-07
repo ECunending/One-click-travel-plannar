@@ -10,7 +10,7 @@ export function makeTrip({ destination, days, pace, startDate }) {
   const count = Number(days);
   if (!place || !Number.isInteger(count) || count < 1 || count > 7) throw new Error('Choose a destination and a trip length from 1 to 7 days.');
   if (!['relaxed', 'balanced', 'packed'].includes(pace)) throw new Error('Choose a travel pace.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate))) throw new Error('Choose a start date.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || Number.isNaN(Date.parse(startDate)) || new Date(startDate).toISOString().slice(0, 10) !== startDate) throw new Error('Choose a valid start date.');
   const itinerary = Array.from({ length: count }, (_, index) => ({
     day: index + 1,
     activities: [

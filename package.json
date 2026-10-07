@@ -9,6 +9,14 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test"
   },
-  "engines": { "node": ">=22" },
-  "devDependencies": { "vite": "^7.1.0" }
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "vite": "^7.1.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.3"
+  }
 }

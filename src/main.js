@@ -1,12 +1,13 @@
 import './style.css';
-import { destinations, makeTrip, tripText } from './planner.js';
+import { destinations, makeTrip, tripText, plannerDestinationNames } from './planner.js';
+import { setupAtlas } from './atlas/atlas.js';
 import { database } from './database.js';
 import { createTripStore, readLegacyTrips, escapeHtml } from './trip-store.js';
 import { setupAccount } from './account.js';
 
-const icon = (name) => ({ compass: '✳', arrow: '↗', plus: '+', bookmark: '♡', check: '✓' }[name]);
 const today = new Date();
 const dateValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+const scrollBehavior = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 let currentTrip;
 let saved = [];
 const tripStore = createTripStore(database);
@@ -18,20 +19,44 @@ let hasMore = false;
 let mutating = false;
 
 document.querySelector('#app').innerHTML = `
-  <header class="header"><a class="brand" href="#"><span class="brand-icon">${icon('compass')}</span> oneclick<span class="brand-dot">.</span></a><nav aria-label="Main navigation"><a class="active" href="#planner">Plan a trip</a><button id="saved-nav">Saved trips <span id="saved-count">0</span></button><button id="account-nav">Sign in</button></nav></header>
+  <a class="skip-link" href="#planner">Skip to the trip planner</a>
+  <header class="header"><a class="brand" href="#atlas" aria-label="oneclick atlas, home"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="6.5"/><ellipse cx="16" cy="16" rx="14" ry="5.2" transform="rotate(-24 16 16)"/><circle cx="27.6" cy="10.4" r="1.7"/></svg>oneclick</a><nav aria-label="Main navigation"><a href="#atlas">Atlas</a><a href="#planner">Plan a trip</a><button id="saved-nav" type="button">Saved trips <span id="saved-count">0</span></button><button id="account-nav" type="button">Sign in</button></nav></header>
   <main>
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><div class="eyebrow"><span></span> LESS PLANNING. MORE LIVING.</div><h1 id="hero-title">Your next adventure,<br>just <em>one click</em> away.</h1><p>Big adventures start with a little idea.<br>Pick a place. Find your pace. We’ll handle the first draft.</p><div class="hero-bottom"><span class="mini-compass">✳</span> A world of possibilities. A plan that feels like you.</div></div>
-      <div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="mountain back"></div><div class="mountain front"></div><div class="hill"></div><div class="art-grain"></div><div class="floating-label"><span>↗</span> Somewhere new is calling.</div><span class="art-caption">TAKE THE SCENIC ROUTE</span></div>
+    <section class="atlas" id="atlas" aria-labelledby="hero-title">
+      <button type="button" id="skip-intro" class="skip-intro" hidden>Skip intro</button>
+      <div class="hero-copy">
+        <h1 id="hero-title">There’s a whole world beyond your orbit.</h1>
+        <p class="hero-lede">Find your next destination. Turn your travels into a constellation.</p>
+        <div class="hero-actions"><button class="primary" id="explore-atlas" type="button">Explore the atlas</button><a class="text-link" href="#city-index">Browse the city index</a></div>
+      </div>
+      <div class="atlas-stage" id="atlas-stage" tabindex="0" role="group" aria-label="Interactive globe of US cities" aria-describedby="globe-help">
+        <div class="marker-layer" id="marker-layer"></div>
+      </div>
+      <p id="globe-help" class="visually-hidden">Drag to rotate the globe. When the globe is focused, use the arrow keys to rotate, plus and minus to zoom, and zero to reset. Every city is also listed in the city index below.</p>
+      <p class="atlas-hint" aria-hidden="true">Choose a point of light, or drag to turn the globe.</p>
+      <div class="atlas-legend"><span data-status="visited">Visited</span><span data-status="wishlist">Wishlist</span><span data-status="explore">Not yet</span><span class="legend-demo">Demo travel records</span><span class="static-note">Showing a flat map because 3D graphics aren’t available here.</span></div>
+      <div class="globe-controls" role="toolbar" aria-label="Globe view">
+        <button type="button" id="zoom-in" class="icon-button" aria-label="Zoom in"><span aria-hidden="true">+</span></button>
+        <button type="button" id="zoom-out" class="icon-button" aria-label="Zoom out"><span aria-hidden="true">−</span></button>
+        <button type="button" id="reset-view" class="icon-button" aria-label="Reset view"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 1.5v4M10 14.5v4M1.5 10h4M14.5 10h4"/></svg></button>
+      </div>
+      <aside id="city-panel" class="city-panel" hidden aria-labelledby="city-name"></aside>
     </section>
-    <section class="planner" id="planner" aria-labelledby="planner-heading"><div class="section-top"><div><span class="step">01 / THE POSSIBILITIES</span><h2 id="planner-heading">Where are we heading?</h2></div><span class="small-note">A little inspiration to get you going</span></div>
-      <div class="destination-grid">${destinations.map((d, index) => `<button class="destination ${d.color} ${index === 0 ? 'selected' : ''}" data-destination="${d.id}" aria-pressed="${index === 0}"><div class="destination-art"><span class="place-symbol">${d.emoji}</span><span class="selection-mark">✓</span><span class="art-lines"></span></div><div class="destination-info"><div><h3>${d.name}</h3><span>${d.country}</span></div><span class="tag">${d.tag}</span></div></button>`).join('')}</div>
-      <form id="trip-form"><div class="form-top"><span class="step">02 / MAKE IT YOURS</span><button type="button" id="surprise">Surprise me <span>⤨</span></button></div><div class="form-row"><label>Departure date<input type="date" id="start-date" value="${dateValue}" min="${dateValue}" required></label><label>How long?<select id="days">${Array.from({length:7}, (_, i) => `<option value="${i + 1}" ${i === 2 ? 'selected' : ''}>${i + 1} ${i === 0 ? 'day' : 'days'}</option>`).join('')}</select></label><label>Your travel pace<select id="pace"><option value="relaxed">Slow & easy</option><option value="balanced" selected>A little of everything</option><option value="packed">See it all</option></select></label><button class="primary" type="submit">Plan my trip <span>↗</span></button></div><p class="form-note">✧ &nbsp; Free to explore. Sign in to keep your trips on any device.</p></form>
+
+    <section class="city-index" id="city-index" aria-labelledby="index-title">
+      <div class="index-head"><div><h2 id="index-title">City index</h2><p>Twenty US cities, each placed by its latitude and longitude. Choose one to turn the globe toward it.</p></div>
+        <div class="index-filter" role="group" aria-label="Filter cities"><button type="button" data-filter="all" aria-pressed="true">All</button><button type="button" data-filter="visited" aria-pressed="false">Visited</button><button type="button" data-filter="wishlist" aria-pressed="false">Wishlist</button></div></div>
+      <ul class="index-list" id="city-index-list"></ul>
+      <p class="index-demo">Visited and wishlist cities are demo records for this prototype. They aren’t saved to your account.</p>
+    </section>
+
+    <section class="planner" id="planner" aria-labelledby="planner-heading"><div class="section-top"><div><h2 id="planner-heading" tabindex="-1">Plan a trip</h2><p class="section-lede">Pick a place and a pace for a first-draft itinerary. Sample itineraries are available for ${plannerDestinationNames()}.</p></div></div>
+      <div class="destination-grid">${destinations.map((d, index) => `<button type="button" class="destination ${d.color} ${index === 0 ? 'selected' : ''}" data-destination="${d.id}" aria-pressed="${index === 0}"><span class="place-symbol" aria-hidden="true">${d.emoji}</span><span class="destination-info"><span class="destination-name">${d.name}</span><span class="destination-country">${d.country}</span><span class="tag">${d.tag}</span></span></button>`).join('')}</div>
+      <form id="trip-form"><div class="form-row"><label>Departure date<input type="date" id="start-date" value="${dateValue}" min="${dateValue}" required></label><label>How long?<select id="days">${Array.from({length:7}, (_, i) => `<option value="${i + 1}" ${i === 2 ? 'selected' : ''}>${i + 1} ${i === 0 ? 'day' : 'days'}</option>`).join('')}</select></label><label>Your travel pace<select id="pace"><option value="relaxed">Slow & easy</option><option value="balanced" selected>A little of everything</option><option value="packed">See it all</option></select></label><button class="primary" type="submit">Plan my trip</button></div><div class="form-foot"><button type="button" id="surprise" class="text-link">Surprise me</button><p class="form-note">Free to explore. Sign in to keep your trips on any device.</p></div></form>
     </section>
     <section id="result" class="result" hidden aria-labelledby="result-title"></section>
-    <section id="saved-section" class="saved-section" hidden aria-labelledby="saved-title"><div class="section-top"><div><span class="step">YOUR LITTLE COLLECTION</span><h2 id="saved-title">Adventures for another day</h2></div><button id="close-saved" class="quiet">Close ×</button></div><div id="account-panel"></div><div id="legacy-import"></div><div id="saved-list" aria-live="polite"></div><button id="load-more" class="secondary" hidden>Load more trips</button></section>
-    <section class="bottom-note"><span>✧</span><p>The best part of a trip?<br><strong>The moments you didn’t plan.</strong></p><span class="note-right">We’ll help you get started.<br>You make it an adventure.</span></section>
-  </main><footer><span>oneclick. <span class="footer-muted">A little less planning, a lot more world.</span></span><span>Built for the curious.</span></footer><div id="toast" role="status" aria-live="polite"></div>`;
+    <section id="saved-section" class="saved-section" hidden aria-labelledby="saved-title"><div class="section-top"><div><h2 id="saved-title">Saved trips</h2><p class="section-lede">Itineraries saved to your account.</p></div><button id="close-saved" type="button" class="quiet">Close</button></div><div id="account-panel"></div><div id="legacy-import"></div><div id="saved-list" aria-live="polite"></div><button id="load-more" type="button" class="secondary" hidden>Load more trips</button></section>
+  </main><footer><span class="brand-foot">oneclick</span><span class="footer-muted">Sample itineraries and demo travel records. No bookings, prices, or availability.</span></footer><div id="toast" role="status" aria-live="polite"></div>`;
 
 let selected = 'kyoto';
 let toastTimeout;
@@ -63,7 +88,7 @@ function renderTrip(trip) {
   const place = destinations.find(d => d.id === trip.destination);
   const result = document.querySelector('#result');
   result.hidden = false;
-  result.innerHTML = `<div class="section-top"><div><span class="step">03 / YOUR NEXT CHAPTER</span><h2 id="result-title" tabindex="-1">${trip.days} ${trip.days === 1 ? 'day' : 'days'} in ${place.name}</h2><p class="trip-meta">${trip.startDate} · ${trip.pace} pace · ${place.country}</p></div><div class="actions"><button id="save-trip" class="secondary">♡ Save trip</button><button id="download-trip" class="secondary">↓ Download</button></div></div><div class="itinerary">${trip.itinerary.map(day => `<article class="day-card"><h3><span>${String(day.day).padStart(2, '0')}</span> Day ${day.day}</h3>${day.activities.map(activity => `<div class="activity"><span>${escapeHtml(activity.time)}</span><p>${escapeHtml(activity.text)}</p></div>`).join('')}</article>`).join('')}</div><p class="sample-note">This is a sample itinerary, not a live booking or availability check. Confirm opening hours, travel requirements, and reservations before you go.</p>`;
+  result.innerHTML = `<div class="section-top"><div><h2 id="result-title" tabindex="-1">${trip.days} ${trip.days === 1 ? 'day' : 'days'} in ${place.name}</h2><p class="trip-meta">${place.country}, starting ${trip.startDate}, ${trip.pace} pace</p></div><div class="actions"><button id="save-trip" type="button" class="secondary">Save trip</button><button id="download-trip" type="button" class="secondary">Download</button></div></div><div class="itinerary">${trip.itinerary.map(day => `<article class="day-card"><h3>Day ${day.day}</h3>${day.activities.map(activity => `<div class="activity"><span>${escapeHtml(activity.time)}</span><p>${escapeHtml(activity.text)}</p></div>`).join('')}</article>`).join('')}</div><p class="sample-note">This is a sample itinerary, not a live booking or availability check. Confirm opening hours, travel requirements, and reservations before you go.</p>`;
   document.querySelector('#save-trip').addEventListener('click', saveTrip);
   document.querySelector('#download-trip').addEventListener('click', () => {
     const url = URL.createObjectURL(new Blob([tripText(currentTrip)], { type: 'text/plain;charset=utf-8' }));
@@ -75,7 +100,7 @@ function renderTrip(trip) {
     toast('Your itinerary is ready to download.');
   });
   document.querySelector('#result-title').focus({ preventScroll: true });
-  result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  result.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
 }
 document.querySelector('#trip-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -84,7 +109,7 @@ document.querySelector('#trip-form').addEventListener('submit', event => {
 });
 function showSaved() {
   document.querySelector('#saved-section').hidden = false;
-  document.querySelector('#saved-section').scrollIntoView({ behavior: 'smooth' });
+  document.querySelector('#saved-section').scrollIntoView({ behavior: scrollBehavior() });
 }
 
 async function loadTrips(append = false) {
@@ -122,7 +147,7 @@ async function saveTrip() {
     toast(result.duplicate ? 'This adventure is already saved in your account.' : 'Trip saved to your account.');
     await loadTrips();
   } catch { if (ownerAtStart === userId) toast('Could not save your trip. Please try again. Your itinerary is still here.'); }
-  finally { mutating = false; button.disabled = false; button.textContent = '♡ Save trip'; }
+  finally { mutating = false; button.disabled = false; button.textContent = 'Save trip'; }
 }
 
 async function removeTrip(id) {
@@ -148,7 +173,7 @@ function renderSaved() {
   if (loadError) status = `<p class="empty">${loadError} <button id="retry-trips" class="secondary">Retry</button></p>`;
   else if (loading) status = '<p class="empty">Loading your adventures…</p>';
   else if (userId && !saved.length) status = '<p class="empty">Your collection starts with a little curiosity. Plan a trip above, then save it here.</p>';
-  list.innerHTML = status + saved.map((trip, index) => `<article class="saved-card"><div><h3>${destinations.find(d => d.id === trip.destination).name}</h3><p>${trip.days} days · ${trip.startDate} · ${trip.pace}</p></div><div class="actions"><button class="secondary" data-open="${index}">View trip ↗</button><button class="quiet" data-remove="${index}" ${mutating ? 'disabled' : ''} aria-label="Remove saved trip to ${destinations.find(d => d.id === trip.destination).name}">Remove</button></div></article>`).join('');
+  list.innerHTML = status + saved.map((trip, index) => `<article class="saved-card"><div><h3>${destinations.find(d => d.id === trip.destination).name}</h3><p>${trip.days} days from ${trip.startDate}, ${trip.pace} pace</p></div><div class="actions"><button class="secondary" data-open="${index}">View trip</button><button class="quiet" data-remove="${index}" ${mutating ? 'disabled' : ''} aria-label="Remove saved trip to ${destinations.find(d => d.id === trip.destination).name}">Remove</button></div></article>`).join('');
   list.querySelector('#retry-trips')?.addEventListener('click', () => loadTrips());
   list.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => renderTrip(saved[Number(button.dataset.open)])));
   list.querySelectorAll('[data-remove]').forEach(button => button.addEventListener('click', () => removeTrip(saved[Number(button.dataset.remove)].id)));
@@ -192,3 +217,12 @@ setupAccount(database, nextUserId => {
   renderSaved();
   if (userId) setTimeout(() => { void loadTrips(); }, 0);
 }, showSaved);
+
+setupAtlas({
+  toast,
+  openPlanner() {
+    const heading = document.querySelector('#planner-heading');
+    document.querySelector('#planner').scrollIntoView({ behavior: scrollBehavior() });
+    heading.focus({ preventScroll: true });
+  },
+});

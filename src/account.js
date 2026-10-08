@@ -22,7 +22,7 @@ export function setupAccount(client, onUserChange, showSaved) {
       });
       return;
     }
-    panel.innerHTML = `<form id="sign-in-form" class="account-form"><h3>Keep your adventures with you</h3><p>Sign in to save trips privately and find them on any device.</p><label>Email address<input id="account-email" type="email" autocomplete="email" required placeholder="you@example.com"></label><button type="submit" class="primary">Email me a sign-in link ↗</button><p id="auth-status" role="status"></p></form>`;
+    panel.innerHTML = `<form id="sign-in-form" class="account-form"><h3>Keep your adventures with you</h3><p>Sign in to save trips privately and find them on any device.</p><label>Email address<input id="account-email" type="email" autocomplete="email" required placeholder="you@example.com"></label><button type="submit" class="primary">Email me a sign-in link</button><p id="auth-status" role="status"></p></form>`;
     document.querySelector('#sign-in-form').addEventListener('submit', async event => {
       event.preventDefault();
       const form = event.currentTarget;

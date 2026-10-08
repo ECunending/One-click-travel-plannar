@@ -27,3 +27,11 @@ export function tripText(trip) {
   const place = destinations.find(item => item.id === trip.destination);
   return `${place.name}, ${place.country}\n${trip.days} days · ${trip.pace} pace · Starts ${trip.startDate}\n\nSample itinerary — check opening hours, availability, and bookings before traveling.\n\n${trip.itinerary.map(day => `Day ${day.day}\n${day.activities.map(activity => `${activity.time}: ${activity.text}`).join('\n')}`).join('\n\n')}`;
 }
+
+// "Kyoto, Lisbon, Bali, and Paris" — the only places the planner can generate.
+export function plannerDestinationNames() {
+  const names = destinations.map(item => item.name);
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}` : names.join('');
+}
+
+export const isPlannerDestination = id => destinations.some(item => item.id === id);
